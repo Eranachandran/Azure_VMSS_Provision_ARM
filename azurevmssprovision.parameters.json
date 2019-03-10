@@ -1,0 +1,122 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "vmssName": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "String",
+      "metadata": {
+        "description": "Name of the virtual machines ScaleSet.The value can only contain alphanumeric characters and cannot start with a number.Virtual machine name cannot contain non-ASCII or special characters."
+      }
+    },
+    "vmSku": {
+      "allowedValues": [
+        "Standard_A0",
+        "Standard_A1",
+        "Standard_A2",
+        "Standard_A3",
+        "Standard_A4",
+        "Standard_A5",
+        "Standard_A6",
+        "Standard_A7",
+        "Standard_D2_v3",
+        "Standard_D4_v3",
+        "Standard_D8_v3",
+        "Standard_D1_v2",
+        "Standard_D2_v2",
+        "Standard_D3_v2",
+        "Standard_D4_v2",
+        "Standard_A1_v2",
+        "Standard_A2_v2",
+        "Standard_A4_v2",
+        "Standard_A8_v2"
+      ],
+      "type": "String",
+      "metadata": {
+        "description": "The size of Virtual Machine in ScaleSet."
+      }
+    },
+    "adminUsername": {
+      "minLength": 1,
+      "maxLength": 32,
+      "type": "String",
+      "metadata": {
+        "description": "Admin username for the virtual machines in ScaleSet.Username must only contain letters, numbers, hyphens, and underscores and may not start with a hyphen or number."
+      }
+    },
+    "adminPassword": {
+      "minLength": 12,
+      "maxLength": 72,
+      "type": "SecureString",
+      "metadata": {
+        "description": "Password must have 3 of the following: 1 lower case character, 1 upper case character, 1 number, and 1 special character that is not 'backslash' or '-'."
+      }
+    },
+    "instanceCount": {
+      "minValue": 1,
+      "maxValue": 100,
+      "type": "Int",
+      "metadata": {
+        "description": "The number of virtual machines in the scale set (0 - 100)."
+      }
+    },
+    "image": {
+      "allowedValues": [
+        "Ubuntu-17.10",
+        "Ubuntu-18.04-LTS",
+        "RHEL-7.5",
+        "RHEL-7.6",
+        "Centos-7.3",
+        "Centos-7.5"
+      ],
+      "type": "String",
+      "metadata": {
+        "description": "The Operating System disk image for the virtual Machine scale set."
+      }
+    },
+    "ipAllocationMethod": {
+      "allowedValues": [
+        "Static",
+        "Dynamic"
+      ],
+      "type": "String"
+    },
+    "autoscaleMax": {
+      "type": "String",
+      "metadata": {
+        "description": "The maximum value for autoscale on this scale set."
+      }
+    },
+    "autoscaleMin": {
+      "type": "String",
+      "metadata": {
+        "description": "The minimum value for autoscale on this scale set."
+      }
+    },
+    "scaleInCPUPercentageThreshold": {
+      "type": "String",
+      "metadata": {
+        "description": "The CPU usage percentage threshold for triggering the scale in autoscale rule."
+      }
+    },
+    "scaleInInterval": {
+      "type": "String",
+      "metadata": {
+        "description": "The number of virtual machines to remove to the scale set when the scale in autoscale rule is triggered."
+      }
+    },
+    "scaleOutCPUPercentageThreshold": {
+      "type": "String",
+      "metadata": {
+        "description": "The CPU usage percentage threshold for triggering the scale out autoscale rule."
+      }
+    },
+    "scaleOutInterval": {
+      "type": "String",
+      "metadata": {
+        "description": "The number of virtual machines to add to the scale set when the scale out autoscale rule is triggered."
+      }
+    }
+  }
+  }
