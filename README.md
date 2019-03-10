@@ -11,6 +11,6 @@ Provisioning a
     "Centos-7.5" 
 Virtual Machine Scale Sets (Public IP Per Instance=False) using ARM Template
 
-New Virtual Network,Virtual Subnet,Network Security Group will be created.
+New Virtual Network,Virtual Subnet,Network Security Group will be created.New Load Balancer Created and attached with VMSS 
 
 In this Newly Created VMSS, the instances should taken SSH by using LoadBalancer's Public IP and Port 50001.After login into the VM in Scaleset we can login in to the other virtual machines in scaleset by Particular VM'S Private IP and Port 22
