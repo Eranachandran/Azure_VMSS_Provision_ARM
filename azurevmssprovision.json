@@ -1,0 +1,498 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "vmssName": {
+      "minLength": 1,
+      "maxLength": 64,
+      "type": "String",
+      "metadata": {
+        "description": "Name of the virtual machines ScaleSet.The value can only contain alphanumeric characters and cannot start with a number.Virtual machine name cannot contain non-ASCII or special characters."
+      }
+    },
+    "vmSku": {
+      "allowedValues": [
+        "Standard_A0",
+        "Standard_A1",
+        "Standard_A2",
+        "Standard_A3",
+        "Standard_A4",
+        "Standard_A5",
+        "Standard_A6",
+        "Standard_A7",
+        "Standard_D2_v3",
+        "Standard_D4_v3",
+        "Standard_D8_v3",
+        "Standard_D1_v2",
+        "Standard_D2_v2",
+        "Standard_D3_v2",
+        "Standard_D4_v2",
+        "Standard_A1_v2",
+        "Standard_A2_v2",
+        "Standard_A4_v2",
+        "Standard_A8_v2"
+      ],
+      "type": "String",
+      "metadata": {
+        "description": "The size of Virtual Machine in ScaleSet."
+      }
+    },
+    "adminUsername": {
+      "minLength": 1,
+      "maxLength": 32,
+      "type": "String",
+      "metadata": {
+        "description": "Admin username for the virtual machines in ScaleSet.Username must only contain letters, numbers, hyphens, and underscores and may not start with a hyphen or number."
+      }
+    },
+    "adminPassword": {
+      "minLength": 12,
+      "maxLength": 72,
+      "type": "SecureString",
+      "metadata": {
+        "description": "Password must have 3 of the following: 1 lower case character, 1 upper case character, 1 number, and 1 special character that is not 'backslash' or '-'."
+      }
+    },
+    "instanceCount": {
+      "minValue": 1,
+      "maxValue": 100,
+      "type": "Int",
+      "metadata": {
+        "description": "The number of virtual machines in the scale set (0 - 100)."
+      }
+    },
+    "image": {
+      "allowedValues": [
+        "Ubuntu-17.10",
+        "Ubuntu-18.04-LTS",
+        "RHEL-7.5",
+        "RHEL-7.6",
+        "Centos-7.3",
+        "Centos-7.5"
+      ],
+      "type": "String",
+      "metadata": {
+        "description": "The Operating System disk image for the virtual Machine scale set."
+      }
+    },
+    "ipAllocationMethod": {
+      "allowedValues": [
+        "Static",
+        "Dynamic"
+      ],
+      "type": "String"
+    },
+    "autoscaleMax": {
+      "type": "String",
+      "metadata": {
+        "description": "The maximum value for autoscale on this scale set."
+      }
+    },
+    "autoscaleMin": {
+      "type": "String",
+      "metadata": {
+        "description": "The minimum value for autoscale on this scale set."
+      }
+    },
+    "scaleInCPUPercentageThreshold": {
+      "type": "String",
+      "metadata": {
+        "description": "The CPU usage percentage threshold for triggering the scale in autoscale rule."
+      }
+    },
+    "scaleInInterval": {
+      "type": "String",
+      "metadata": {
+        "description": "The number of virtual machines to remove to the scale set when the scale in autoscale rule is triggered."
+      }
+    },
+    "scaleOutCPUPercentageThreshold": {
+      "type": "String",
+      "metadata": {
+        "description": "The CPU usage percentage threshold for triggering the scale out autoscale rule."
+      }
+    },
+    "scaleOutInterval": {
+      "type": "String",
+      "metadata": {
+        "description": "The number of virtual machines to add to the scale set when the scale out autoscale rule is triggered."
+      }
+    }
+  },
+  "variables": {
+    "namingInfix": "[toLower(substring(concat(parameters('vmssName'), uniqueString(resourceGroup().id)), 0, 9))]",
+    "networkApiVersion": "2018-01-01",
+    "storageApiVersion": "2018-07-01",
+    "computeApiVersion": "2018-06-01",
+    "autoscaleApiVersion": "2015-04-01",
+    "redhatOffer": "RHEL",
+    "redhatSku": "(parameters('image')",
+    "redhatPublisher": "RedHat",
+    "centosOffer": "CentOS-HPC",
+    "centosSku": "(parameters('image')",
+    "centosPublisher": "OpenLogic",
+    "ubuntuOffer": "UbuntuServer",
+    "ubuntuSku": "(parameters('image')",
+    "ubuntuPublisher": "Canonical",
+    "loadBalancerName": "[concat(parameters('vmssName'), 'lb')]",
+    "loadBalancerId": "[resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName'))]",
+    "subnetname": "[concat('tssub', take(uniquestring(parameters('vmssName'), 'net'), 6))]",
+    "networkSecurityGroupName": "[concat(parameters('vmssName'), 'nsg')]",
+    "vhdContainerName": "[concat(variables('namingInfix'), 'vhd')]",
+    "storageAccountNamePrefix": "[toLower(concat(substring(uniqueString(resourceGroup().id), 0, 9), variables('namingInfix'), 'sa'))]",
+    "vmssId": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmssName'))]",
+    "pipName": "[concat(parameters('vmssName'), 'pname')]",
+    "pipLabel": "[concat(parameters('vmssName'), 'plabel')]",
+    "subnetId": "[concat(variables('vnetId'),'/subnets/',variables('subnetname'))]",
+    "virtualnetwork_name": "[concat('tsvnet', take(uniquestring(parameters('vmssName'), 'net'), 6))]",
+    "vnetId": "[resourceId(resourcegroup().name,'Microsoft.Network/virtualNetworks', variables('virtualnetwork_name'))]",
+	"location":"[resourcegroup().location]"
+  },
+  "resources": [{
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('virtualnetwork_name')]",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "subnets": [{
+          "name": "[variables('subnetname')]",
+          "properties": {
+            "addressPrefix": "10.2.0.0/16",
+            "networkSecurityGroup": {
+              "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+            }
+          }
+        }],
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.2.0.0/16"
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "sku": {
+        "name": "Standard"
+      },
+      "name": "[variables('pipName')]",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "publicIPAllocationMethod": "[parameters('ipAllocationMethod')]",
+        "dnsSettings": {
+          "domainNameLabel": "[variables('pipLabel')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/loadBalancers",
+      "sku": {
+        "name": "Standard"
+      },
+      "name": "[variables('loadBalancerName')]",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "frontendIPConfigurations": [{
+          "name": "LoadBalancerFrontEnd",
+          "properties": {
+            "publicIPAddress": {
+              "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('pipName'))]"
+            }
+          }
+        }],
+        "backendAddressPools": [{
+          "name": "bepool"
+        }],
+        "inboundNatPools": [{
+          "name": "natpool",
+          "properties": {
+            "frontendIPConfiguration": {
+              "id": "[concat(variables('loadBalancerId'), '/frontendIPConfigurations/loadBalancerFrontEnd')]"
+            },
+            "protocol": "tcp",
+            "frontendPortRangeStart": "50000",
+            "frontendPortRangeEnd": "50119",
+            "backendPort": "22"
+          }
+        }],
+        "probes": [{
+          "name": "tcpProbe",
+          "properties": {
+            "protocol": "tcp",
+            "port": 80,
+            "intervalInSeconds": 5,
+            "numberOfProbes": 2
+          }
+        }],
+        "loadBalancingRules": [{
+          "name": "LBRule",
+          "properties": {
+            "frontendIPConfiguration": {
+              "id": "[concat(variables('loadBalancerId'), '/frontendIPConfigurations/loadBalancerFrontEnd')]"
+            },
+            "backendAddressPool": {
+              "id": "[concat(variables('loadBalancerId'),'/backendAddressPools/bepool')]"
+            },
+            "protocol": "tcp",
+            "frontendPort": 80,
+            "backendPort": 80,
+            "enableFloatingIP": false,
+            "idleTimeoutInMinutes": 5,
+            "probe": {
+              "id": "[concat(variables('loadBalancerId'),'/probes/tcpProbe')]"
+            }
+          }
+        }]
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('pipName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "[variables('networkSecurityGroupName')]",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "securityRules": [{
+            "name": "allowSSH",
+            "properties": {
+              "description": "Allow SSH traffic",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1000,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "allowHTTP",
+            "properties": {
+              "description": "Allow web traffic",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1001,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "name": "[concat(variables('storageAccountNamePrefix'), copyIndex())]",
+      "apiVersion": "[variables('storageApiVersion')]",
+      "location": "[variables('location')]",
+      "copy": {
+        "name": "storageLoop",
+        "count": 5
+      },
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachineScaleSets",
+      "sku": {
+        "name": "[parameters('vmSku')]",
+        "tier": "Standard",
+        "capacity": "[int(parameters('instanceCount'))]"
+      },
+      "name": "[parameters('vmssName')]",
+      "apiVersion": "[variables('computeApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "overprovision": "true",
+        "upgradePolicy": {
+          "mode": "Manual"
+        },
+        "singlePlacementGroup": "True",
+        "virtualMachineProfile": {
+          "storageProfile": {
+            "imageReference": {
+              "publisher": "[if(equals(parameters('image'), 'Ubuntu-17.10'),variables('ubuntuPublisher'), if(equals(parameters('image'), 'Ubuntu-18.04-LTS'),variables('ubuntuPublisher'), if(equals(parameters('image'), 'RHEL-7.5'),variables('redhatPublisher'), if(equals(parameters('image'), 'RHEL-7.6'),variables('redhatPublisher'), if(equals(parameters('image'), 'Centos-7.3'),variables('centosPublisher'), variables('centosPublisher'))))))]",
+              "offer": "[if(equals(parameters('image'), 'Ubuntu-17.10'),variables('ubuntuOffer'), if(equals(parameters('image'), 'Ubuntu-18.04-LTS'),variables('ubuntuOffer'), if(equals(parameters('image'), 'RHEL-7.5'),variables('redhatOffer'), if(equals(parameters('image'), 'RHEL-7.6'),variables('redhatOffer'), if(equals(parameters('image'), 'Centos-7.3'),variables('centosOffer'), variables('centosOffer'))))))]",
+              "sku": "[if(equals(parameters('image'), 'Ubuntu-17.10'),'17.10', if(equals(parameters('image'), 'Ubuntu-18.04-LTS'),'18.04-LTS', if(equals(parameters('image'), 'RHEL-7.5'),'7.5', if(equals(parameters('image'), 'RHEL-7.6'),'7-RAW', if(equals(parameters('image'), 'Centos-7.3'),'7.3', '7.4')))))]",
+              "version": "latest"
+            },
+            "osDisk": {
+              "createOption": "FromImage",
+              "caching": "ReadWrite",
+              "name": "[concat(variables('namingInfix'), 'osdisk')]",
+              "vhdContainers": [
+                "[concat(reference(concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '0')), variables('storageApiVersion')).primaryEndpoints.blob, variables('vhdContainerName'))]",
+                "[concat(reference(concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '1')), variables('storageApiVersion')).primaryEndpoints.blob, variables('vhdContainerName'))]",
+                "[concat(reference(concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '2')), variables('storageApiVersion')).primaryEndpoints.blob, variables('vhdContainerName'))]",
+                "[concat(reference(concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '3')), variables('storageApiVersion')).primaryEndpoints.blob, variables('vhdContainerName'))]",
+                "[concat(reference(concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '4')), variables('storageApiVersion')).primaryEndpoints.blob, variables('vhdContainerName'))]"
+              ]
+            }
+          },
+          "priority": "Regular",
+          "osProfile": {
+            "computerNamePrefix": "[variables('namingInfix')]",
+            "adminUsername": "[parameters('adminUsername')]",
+            "adminPassword": "[parameters('adminPassword')]"
+          },
+          "networkProfile": {
+            "networkInterfaceConfigurations": [{
+              "name": "[concat(parameters('vmssName'), 'Nic')]",
+              "properties": {
+                "primary": "true",
+                "enableAcceleratedNetworking": "false",
+                "ipConfigurations": [{
+                  "name": "[concat(parameters('vmssName'), 'IpConfig')]",
+                  "properties": {
+                    "subnet": {
+                      "id": "[variables('subnetId')]"
+                    },
+                    "loadBalancerBackendAddressPools": [{
+                      "id": "[reference(variables('loadBalancerName'), variables('networkApiVersion')).backendAddressPools[0].id]"
+                    }],
+                    "loadBalancerInboundNatPools": [{
+                      "id": "[reference(variables('loadBalancerName'), variables('networkApiVersion')).inboundNatPools[0].id]"
+                    }]
+                  }
+                }]
+              }
+            }]
+          }
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/virtualNetworks/', variables('virtualnetwork_name'))]",
+        "[concat('Microsoft.Network/loadBalancers/', variables('loadBalancerName'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '0'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '1'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '2'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '3'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', concat(variables('storageAccountNamePrefix'), '4'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/autoscaleSettings",
+      "name": "[concat('cpuautoscale', variables('namingInfix'))]",
+      "apiVersion": "[variables('autoscaleApiVersion')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "name": "[concat('cpuautoscale', variables('namingInfix'))]",
+        "targetResourceUri": "[variables('vmssId')]",
+        "enabled": true,
+        "profiles": [{
+          "name": "Profile1",
+          "capacity": {
+            "minimum": "[parameters('autoscaleMin')]",
+            "maximum": "[parameters('autoscaleMax')]",
+            "default": "1"
+          },
+          "rules": [{
+              "metricTrigger": {
+                "metricName": "Percentage CPU",
+                "metricNamespace": "",
+                "metricResourceUri": "[variables('vmssId')]",
+                "timeGrain": "PT1M",
+                "statistic": "Average",
+                "timeWindow": "PT5M",
+                "timeAggregation": "Average",
+                "operator": "GreaterThan",
+                "threshold": "[parameters('scaleOutCPUPercentageThreshold')]"
+              }, 
+              "scaleAction": {
+                "direction": "Increase",
+                "type": "ChangeCount",
+                "value": "[parameters('scaleOutInterval')]",
+                "cooldown": "PT1M"
+              }
+            },
+            {
+              "metricTrigger": {
+                "metricName": "Percentage CPU",
+                "metricNamespace": "",
+                "metricResourceUri": "[variables('vmssId')]",
+                "timeGrain": "PT1M",
+                "statistic": "Average",
+                "timeWindow": "PT5M",
+                "timeAggregation": "Average",
+                "operator": "LessThan",
+                "threshold": "[parameters('scaleInCPUPercentageThreshold')]"
+              },
+              "scaleAction": {
+                "direction": "Decrease",
+                "type": "ChangeCount",
+                "value": "[parameters('scaleInInterval')]",
+                "cooldown": "PT1M"
+              }
+            }
+          ]
+        }]
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachineScaleSets/', parameters('vmssName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "vmssName": {
+      "type": "String",
+      "value": "[parameters('vmssName')]"
+    },
+    "vmSku": {
+      "type": "String",
+      "value": "[parameters('vmSku')]"
+    },
+    "adminUsername": {
+      "type": "String",
+      "value": "[parameters('adminUsername')]"
+    },
+    "instanceCount": {
+      "type": "Int",
+      "value": "[parameters('instanceCount')]"
+    },
+    "image": {
+      "type": "String",
+      "value": "[parameters('image')]"
+    },
+    "ipAllocationMethod": {
+      "type": "String",
+      "value": "[parameters('ipAllocationMethod')]"
+    },
+    "autoscaleMax": {
+      "type": "String",
+      "value": "[parameters('autoscaleMax')]"
+    },
+    "autoscaleMin": {
+      "type": "String",
+      "value": "[parameters('autoscaleMin')]"
+    },
+    "scaleInCPUPercentageThreshold": {
+      "type": "String",
+      "value": "[parameters('scaleInCPUPercentageThreshold')]"
+    },
+    "scaleOutCPUPercentageThreshold": {
+      "type": "String",
+      "value": "[parameters('scaleOutCPUPercentageThreshold')]"
+    },
+    "scaleOutInterval": {
+      "type": "String",
+      "value": "[parameters('scaleOutInterval')]"
+    },
+	"location": {
+      "type": "String",
+      "value": "[variables('location')]"
+    }
+  }
+}
